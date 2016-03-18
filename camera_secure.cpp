@@ -1,5 +1,6 @@
 #include "camera_secure.h"
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 /*
  * configure for face detection
@@ -113,7 +114,7 @@ vector<Rect> detectLetters2(Mat img)
 	threshold(grad, bw, 0.0, 255.0, THRESH_BINARY | THRESH_OTSU);
 	// connect horizontally oriented regions
 	Mat connected;
-	morphKernel = getStructuringElement(MORPH_RECT, Size(9, 1));
+	morphKernel = getStructuringElement(MORPH_RECT, Size(1, 9));
 	morphologyEx(bw, connected, MORPH_CLOSE, morphKernel);
 	// find contours
 	Mat mask = Mat::zeros(bw.size(), CV_8UC1);
@@ -132,7 +133,7 @@ vector<Rect> detectLetters2(Mat img)
 		double r = (double) countNonZero(maskROI) / (rect.width * rect.height);
 
 		if (r > .45 /* assume at least 45% of the area is filled if it contains text */
-		&& (rect.height > 20 && rect.width > 20) /* constraints on region size */
+		&& (rect.height > 10 && rect.width > 10) /* constraints on region size */
 		/* these two conditions alone are not very robust. better to use something
 		 like the number of significant peaks in a horizontal projection as a third condition */
 		) {

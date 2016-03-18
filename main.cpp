@@ -59,6 +59,11 @@ const char* face_secure_file = "/opt/camera_security/security_2.jpg";
 const char* text_secure_file = "/opt/camera_security/security_3.jpg";
 map<string, string> options;
 
+const int MAX_STATUS_LASTING_COUNT = 3;
+const float MAX_TEXT_COVER_AREA = 0.03f;
+const int MAX_TEXT_COVER_COUNT = 7;
+
+
 void parse(std::istream & cfgfile)
 {
     for (string line; getline(cfgfile, line); )
@@ -205,6 +210,11 @@ int main(int argc, char**argv)
 	}
 
 	Mat original, gray, text_secure_screen, face_secure_screen;
+	face_secure_screen = imread(face_secure_file);
+	text_secure_screen = imread(text_secure_file);
+	int mCount = 0;
+	SScreen status = NO_SECURE;
+	SScreen t_status = NO_SECURE;
 	void* yuyv;
 	int i;
 	while (true) {
@@ -225,17 +235,34 @@ int main(int argc, char**argv)
 		//
 		vector<Rect> texts = detectLetters2(original);
 //		printf("Number of Text area: %d\n", texts.size());
-		for(i=0; i<texts.size(); i++){
-			rectangle(original, texts[i], CV_RGB(0,0,0), CV_FILLED);
-		}
 
 		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1, NULL);
+
 		if(faces.size() == 0){
-			face_secure_screen = imread(face_secure_file);
-			putText(face_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT-10),
-					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255,255,255), 1);
-			yuyv = BGR2YUYV(face_secure_screen.data, face_secure_screen.cols, face_secure_screen.rows);
+			printf("No face!\n");
+			mCount = (t_status == FACE_SECURE) ? (mCount+1):0;
+			t_status = FACE_SECURE;
 		} else {
+			int area = 0;
+			for (i = 0; i < texts.size(); i++) {
+				area += texts[i].width * texts[i].height;
+			}
+			if (texts.size()>MAX_TEXT_COVER_COUNT || area>FRAME_WIDTH*FRAME_HEIGHT*MAX_TEXT_COVER_AREA) {
+				printf("number of text region: %d\n", texts.size());
+				printf("text area cover: %f%%\n", ((float) (area * 100)) / (FRAME_WIDTH * FRAME_HEIGHT));
+				mCount = (t_status == TEXT_SECURE) ? (mCount + 1) : 0;
+				t_status = TEXT_SECURE;
+			} else {
+				printf("number of text region: %d\n", texts.size());
+				printf("text area cover: %f%%\n", ((float)(area*100))/(FRAME_WIDTH*FRAME_HEIGHT));
+				mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
+				t_status = NO_SECURE;
+			}
+		}
+
+		if(mCount>MAX_STATUS_LASTING_COUNT)
+			status = t_status;
+		if(status == NO_SECURE){
 			rectangle(original, cvPoint(0,0), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT/8), CV_RGB(0,0,0), CV_FILLED);
 			rectangle(original, cvPoint(0,FRAME_HEIGHT*7/8), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);
 			rectangle(original, cvPoint(0,0), cvPoint(FRAME_WIDTH/4, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);
@@ -243,11 +270,18 @@ int main(int argc, char**argv)
 			putText(original, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT-10),
 					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255,255,255), 1);
 			yuyv = BGR2YUYV(original.data, FRAME_WIDTH, FRAME_HEIGHT);
+		} else if(status == FACE_SECURE){
+			putText(face_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT-10),
+					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255,255,255), 1);
+			yuyv = BGR2YUYV(face_secure_screen.data, face_secure_screen.cols, face_secure_screen.rows);
+		} else if(status == TEXT_SECURE){
+			putText(text_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
+					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255, 255, 255), 1);
+			yuyv = BGR2YUYV(text_secure_screen.data, text_secure_screen.cols, text_secure_screen.rows);
 		}
 		if (framesize != write(fdwr, yuyv, framesize)) {
 		}
-		if (waitKey(30) == 27) { //wait for 'esc' key press for 30ms. If 'esc' key is pressed, break loop
-//			printf("esc key is pressed by user");
+		if (waitKey(30) == 27) {
 			break;
 		}
 		free(yuyv);
