@@ -7,6 +7,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <signal.h>
 
 #include <map>
 #include <sstream>
@@ -49,7 +50,7 @@
 #endif
 
 #define LOGO_KEY "VIDEO_LOGO"
-#define CONFIG_FILE "/home/sysadmin/.camera_security"
+#define CONFIG_FILE "/opt/camera_security/.camera_security"
 #define PID_SAVE_FILE "/tmp/camera.pid"
 #define VERSION_SAVE_FILE "/tmp/camera.version"
 #define PID_SAVE_PATH "/tmp"
@@ -155,8 +156,24 @@ void print_format(struct v4l2_format*vid_format) {
 //  printf("	vid_format->fmt.pix.colorspace  =%d\n",	vid_format->fmt.pix.colorspace );
 }
 
+
+void signal_handler(int signal){
+	if( remove(PID_SAVE_FILE) != 0 )
+	    perror( "Error deleting file" );
+	exit(-1);
+}
+
 int main(int argc, char**argv)
 {
+	// signal handler
+	signal(SIGINT, signal_handler);
+	signal(SIGQUIT, signal_handler);
+	signal(SIGKILL, signal_handler);
+	signal(SIGCONT, signal_handler);
+	signal(SIGHUP, signal_handler);
+	signal(SIGABRT, signal_handler);
+	signal(SIGSEGV, signal_handler);
+	//
 	struct v4l2_capability vid_caps;
 	struct v4l2_format vid_format;
 	size_t framesize;
@@ -234,12 +251,9 @@ int main(int argc, char**argv)
 		cvReleaseImage(&frame);
 		//
 		vector<Rect> texts = detectLetters2(original);
-//		printf("Number of Text area: %d\n", texts.size());
-
 		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1, NULL);
 
 		if(faces.size() == 0){
-			printf("No face!\n");
 			mCount = (t_status == FACE_SECURE) ? (mCount+1):0;
 			t_status = FACE_SECURE;
 		} else {
@@ -248,13 +262,9 @@ int main(int argc, char**argv)
 				area += texts[i].width * texts[i].height;
 			}
 			if (texts.size()>MAX_TEXT_COVER_COUNT || area>FRAME_WIDTH*FRAME_HEIGHT*MAX_TEXT_COVER_AREA) {
-				printf("number of text region: %d\n", texts.size());
-				printf("text area cover: %f%%\n", ((float) (area * 100)) / (FRAME_WIDTH * FRAME_HEIGHT));
 				mCount = (t_status == TEXT_SECURE) ? (mCount + 1) : 0;
 				t_status = TEXT_SECURE;
 			} else {
-				printf("number of text region: %d\n", texts.size());
-				printf("text area cover: %f%%\n", ((float)(area*100))/(FRAME_WIDTH*FRAME_HEIGHT));
 				mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
 				t_status = NO_SECURE;
 			}
