@@ -8,7 +8,7 @@ __u8* RGB2YUYV(__u8 *input, int w, int h){
 	int i;
 	for(i=0; i<w*h; i+=2){
 		__u8 y0, u, y1, v, r0, g0, b0, r1, g1, b1;
-		memcpy(&r0, input + 3*i	, 1);
+		memcpy(&r0, input + 3*i	, (size_t)1);
 		memcpy(&g0 , input + 3*i+1, 1);
 		memcpy(&b0, input + 3*i+2, 1);
 		memcpy(&r1, input + 3*i+3, 1);

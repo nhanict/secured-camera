@@ -20,6 +20,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include "camera_secure.h"
 #include "utils.h"
+#include "image_processing.h"
 
 #define ROUND_UP_2(num)  (((num)+1)&~1)
 #define ROUND_UP_4(num)  (((num)+3)&~3)
@@ -112,7 +113,6 @@ void info_writing() {
 		fprintf(fp, "%d.%d\n", VERSION, SUBVERSION);
 	}
 	fclose(fp);
-	//
 	ifstream f(CONFIG_FILE);
 	parse(f);
 	//printf("%s: %s\n", LOGO_KEY, options[LOGO_KEY].c_str());
@@ -158,6 +158,7 @@ void print_format(struct v4l2_format*vid_format) {
 
 
 void signal_handler(int signal){
+	printf( "signal catched: %d\n", signal);
 	if( remove(PID_SAVE_FILE) != 0 )
 	    perror( "Error deleting file" );
 	exit(-1);
