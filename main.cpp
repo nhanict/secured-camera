@@ -61,9 +61,9 @@ const char* face_secure_file = "/opt/camera_security/security_2.jpg";
 const char* text_secure_file = "/opt/camera_security/security_3.jpg";
 map<string, string> options;
 
-const int MAX_STATUS_LASTING_COUNT = 3;
-const float MAX_TEXT_COVER_AREA = 0.03f;
-const int MAX_TEXT_COVER_COUNT = 7;
+const int MAX_STATUS_LASTING_COUNT = 1;
+const float MAX_TEXT_COVER_AREA = 0.02f;
+const int MAX_TEXT_COVER_COUNT = 2;
 
 
 void parse(std::istream & cfgfile)
@@ -243,7 +243,6 @@ int main(int argc, char**argv)
 		}
 		//imshow("Original", original); //show the original image
 		cvtColor(original, gray, CV_BGR2GRAY);
-
 		IplImage* frame = cvCreateImage(cvSize(gray.cols, gray.rows), 8, gray.channels());
 		IplImage tmp = gray;
 		cvCopy(&tmp, frame);
@@ -254,10 +253,8 @@ int main(int argc, char**argv)
 		vector<Rect> texts = detectLetters2(original);
 		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1, NULL);
 
-		if(faces.size() == 0){
-			mCount = (t_status == FACE_SECURE) ? (mCount+1):0;
-			t_status = FACE_SECURE;
-		} else {
+
+		{
 			int area = 0;
 			for (i = 0; i < texts.size(); i++) {
 				area += texts[i].width * texts[i].height;
@@ -266,8 +263,14 @@ int main(int argc, char**argv)
 				mCount = (t_status == TEXT_SECURE) ? (mCount + 1) : 0;
 				t_status = TEXT_SECURE;
 			} else {
-				mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
-				t_status = NO_SECURE;
+				//printf("faces number: %d\n", faces.size());
+				if(faces.size() == 0){
+					mCount = (t_status == FACE_SECURE) ? (mCount+1):0;
+					t_status = FACE_SECURE;
+				} else {
+					mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
+					t_status = NO_SECURE;
+				}
 			}
 		}
 

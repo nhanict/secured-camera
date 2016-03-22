@@ -10,8 +10,8 @@ CvScalar RED = { 0, 0, 255 };
 int scale_factor = 3;
 int min_neighbors = 3;
 int flags = CV_HAAR_DO_CANNY_PRUNING;
-int min_size = 40;
-int max_size = 120;
+int min_size = 50;
+int max_size = 150;
 double scale = 2;
 const char* cascade_name = "/opt/camera_security/haarcascade_frontalface_default.xml";
 Mat original; //current frame
@@ -133,7 +133,7 @@ vector<Rect> detectLetters2(Mat img)
 		double r = (double) countNonZero(maskROI) / (rect.width * rect.height);
 
 		if (r > .45 /* assume at least 45% of the area is filled if it contains text */
-		&& (rect.height > 10 && rect.width > 10) /* constraints on region size */
+		&& (rect.height > 8 && rect.width > 8) /* constraints on region size */
 		/* these two conditions alone are not very robust. better to use something
 		 like the number of significant peaks in a horizontal projection as a third condition */
 		) {
