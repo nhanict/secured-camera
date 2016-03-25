@@ -62,8 +62,8 @@ const char* text_secure_file = "/opt/camera_security/security_3.jpg";
 map<string, string> options;
 
 const int MAX_STATUS_LASTING_COUNT = 1;
-const float MAX_TEXT_COVER_AREA = 0.02f;
-const int MAX_TEXT_COVER_COUNT = 2;
+const float MAX_TEXT_COVER_AREA = 0.01f;
+const int MAX_TEXT_COVER_COUNT = 5;
 
 
 void parse(std::istream & cfgfile)
@@ -253,26 +253,25 @@ int main(int argc, char**argv)
 		vector<Rect> texts = detectLetters2(original);
 		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1, NULL);
 
-
-		{
-			int area = 0;
-			for (i = 0; i < texts.size(); i++) {
-				area += texts[i].width * texts[i].height;
-			}
-			if (texts.size()>MAX_TEXT_COVER_COUNT || area>FRAME_WIDTH*FRAME_HEIGHT*MAX_TEXT_COVER_AREA) {
-				mCount = (t_status == TEXT_SECURE) ? (mCount + 1) : 0;
-				t_status = TEXT_SECURE;
+		int area = 0;
+		for (i = 0; i < texts.size(); i++) {
+			area += texts[i].width * texts[i].height;
+		}
+		if (texts.size() > MAX_TEXT_COVER_COUNT
+				|| area > FRAME_WIDTH * FRAME_HEIGHT * MAX_TEXT_COVER_AREA) {
+			mCount = (t_status == TEXT_SECURE) ? (mCount + 1) : 0;
+			t_status = TEXT_SECURE;
+		} else {
+			//printf("faces number: %d\n", faces.size());
+			if (faces.size() == 0) {
+				mCount = (t_status == FACE_SECURE) ? (mCount + 1) : 0;
+				t_status = FACE_SECURE;
 			} else {
-				//printf("faces number: %d\n", faces.size());
-				if(faces.size() == 0){
-					mCount = (t_status == FACE_SECURE) ? (mCount+1):0;
-					t_status = FACE_SECURE;
-				} else {
-					mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
-					t_status = NO_SECURE;
-				}
+				mCount = (t_status == NO_SECURE) ? (mCount + 1) : 0;
+				t_status = NO_SECURE;
 			}
 		}
+
 
 		if(mCount>MAX_STATUS_LASTING_COUNT)
 			status = t_status;
@@ -292,6 +291,11 @@ int main(int argc, char**argv)
 			putText(text_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
 					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255, 255, 255), 1);
 			yuyv = BGR2YUYV(text_secure_screen.data, text_secure_screen.cols, text_secure_screen.rows);
+			//
+//			for (i = 0; i < texts.size(); i++) {
+//				rectangle(original, texts[i], CV_RGB(255,0,0), 2);
+//			}
+//			yuyv = BGR2YUYV(original.data, FRAME_WIDTH, FRAME_HEIGHT);
 		}
 		if (framesize != write(fdwr, yuyv, framesize)) {
 		}
