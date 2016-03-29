@@ -62,6 +62,7 @@ const char* text_secure_file = "/opt/camera_security/security_3.jpg";
 map<string, string> options;
 
 const int MAX_STATUS_LASTING_COUNT = 1;
+const int MAX_STATUS_LASTING_COUNT_FACE = 5;
 const float MAX_TEXT_COVER_AREA = 0.01f;
 const int MAX_TEXT_COVER_COUNT = 5;
 
@@ -273,8 +274,14 @@ int main(int argc, char**argv)
 		}
 
 
-		if(mCount>MAX_STATUS_LASTING_COUNT)
-			status = t_status;
+		if(t_status == FACE_SECURE){
+			if(mCount>MAX_STATUS_LASTING_COUNT_FACE)
+				status = t_status;
+		} else {
+			if(mCount>MAX_STATUS_LASTING_COUNT)
+				status = t_status;
+		}
+
 		if(status == NO_SECURE){
 			rectangle(original, cvPoint(0,0), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT/8), CV_RGB(0,0,0), CV_FILLED);
 			rectangle(original, cvPoint(0,FRAME_HEIGHT*7/8), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);

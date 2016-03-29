@@ -19,7 +19,6 @@ const uint8 mask3_plus[3][3] = {{0, 1, 0},
 const uint8 mask3_full[3][3] = {{1, 1, 1},
 									 {1, 1, 1},
 									 {1, 1, 1}};
-};
 
 uint8 **image_array_alloc(int rows, int cols){
 	int i;
@@ -68,7 +67,7 @@ uint8 *convert2DImage2Memory(const uint8** input, int rows, int cols){
 	int i;
 	uint8 *out = (uint8 *)malloc(rows*cols*sizeof(uint8));
 	for(i=0; i<rows; i++){
-		memcpy(out[i*cols], input[i], cols*sizeof(uint8));
+		memcpy(&out[i*cols], input[i], cols*sizeof(uint8));
 	}
 	return out;
 }
@@ -190,8 +189,8 @@ uint8 **mask_dilation(const uint8 **input, const uint8 **mask, int value, int th
 				for(a=-1; a<=1; a++)
 					for(b=-1; b<=1; b++)
 						if(input[i+a][j+b] == value)
-							count++;
-				if(count > threshold)
+							max++;
+				if(max > threshold)
 					output[i][j] = value;
 
 		}

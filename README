@@ -1,0 +1,60 @@
+
+make
+make
+
+ls -al /dev/video*
+sudo rmmod -r v4l2loopback
+sudo rmmod v4l2loopback
+lsmod | grep v4l2
+
+modprobe v4l2loopback exclusive_caps=1
+sudo modprobe v4l2loopback exclusive_caps=1
+
+cat /tmp/camera.pid 
+kill -9 `echo /tmp/camera.pid`
+
+rmmod v4l2loopback
+sudo rmmod v4l2loopback
+ls
+lsmod | grep v4l2
+ls -al /dev/video0 
+ls -al /dev/video*
+ls
+modprobe v4l2loopback dvices=1 video_nr=2 exclusive_caps=1
+sudo modprobe v4l2loopback dvices=1 video_nr=2 exclusive_caps=1
+ls -al /dev/vide*
+sudo rmmod v4l2loopback 
+sudo modprobe v4l2loopback dvices=2 video_nr=1 exclusive_caps=1
+ls -al /dev/video*
+ls
+cd /opt/camera_security/
+ls
+cd
+ls
+cd
+cd workspace/nhanndt/camera_driver/
+ls
+cd v4l2CameraSecurity/
+ls
+./camera_security &
+ls
+cat /tmp/camera.pid 
+kill -9 5691
+sudo rmmod v4l2loopback
+ps -aux | grep cam
+lsmod | grep v4l2
+ls -al /dev/video0 
+ls
+sudo modprobe v4l2loopback exclusive_caps=1
+ls
+./camera_security &
+lsmod | grep v4l2
+ls
+ps aux | grep camera
+sudo kill -9 1502
+cd workspace/nhanndt/camera_driver/v4l2CameraSecurity/
+./camera_security 
+sudo rm /tmp/camera.pid 
+./camera_security 
+make clean
+
