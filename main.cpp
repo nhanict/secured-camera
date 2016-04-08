@@ -1,6 +1,7 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,13 +16,20 @@
 #include <stdexcept>
 #include <string>
 
+// Network socket
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netinet/in.h>
 
+// opencv
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include "camera_secure.h"
+#include "secure_camera_socket_handler.h"
 #include "utils.h"
 #include "image_processing.h"
-
+//
 #define ROUND_UP_2(num)  (((num)+1)&~1)
 #define ROUND_UP_4(num)  (((num)+3)&~3)
 #define ROUND_UP_8(num)  (((num)+7)&~7)
@@ -29,7 +37,8 @@
 #define ROUND_UP_32(num) (((num)+31)&~31)
 #define ROUND_UP_64(num) (((num)+63)&~63)
 
-
+#define MAXPENDING 10    /* Max connection requests */
+#define BUFFSIZE 32
 
 
 #if 0
@@ -65,6 +74,7 @@ const int MAX_STATUS_LASTING_COUNT = 1;
 const int MAX_STATUS_LASTING_COUNT_FACE = 5;
 const float MAX_TEXT_COVER_AREA = 0.01f;
 const int MAX_TEXT_COVER_COUNT = 5;
+SocketHandler *sh = NULL;
 
 
 void parse(std::istream & cfgfile)
@@ -107,13 +117,13 @@ void info_writing() {
 	fp = fopen(PID_SAVE_FILE, "w");
 	if (fp != NULL) {
 		fprintf(fp, "%d\n", getpid());
+		fclose(fp);
 	}
-	fclose(fp);
 	fp = fopen(VERSION_SAVE_FILE, "w");
 	if (fp != NULL) {
 		fprintf(fp, "%d.%d\n", VERSION, SUBVERSION);
+		fclose(fp);
 	}
-	fclose(fp);
 	ifstream f(CONFIG_FILE);
 	parse(f);
 	//printf("%s: %s\n", LOGO_KEY, options[LOGO_KEY].c_str());
@@ -145,37 +155,11 @@ size_t lw, fw;
 	return 1;
 }
 
-
 void print_format(struct v4l2_format*vid_format) {
-//  printf("	vid_format->type                =%d\n",	vid_format->type );
-//  printf("	vid_format->fmt.pix.width       =%d\n",	vid_format->fmt.pix.width );
-//  printf("	vid_format->fmt.pix.height      =%d\n",	vid_format->fmt.pix.height );
-//  printf("	vid_format->fmt.pix.pixelformat =%d\n",	vid_format->fmt.pix.pixelformat);
-//  printf("	vid_format->fmt.pix.sizeimage   =%d\n",	vid_format->fmt.pix.sizeimage );
-//  printf("	vid_format->fmt.pix.field       =%d\n",	vid_format->fmt.pix.field );
-//  printf("	vid_format->fmt.pix.bytesperline=%d\n",	vid_format->fmt.pix.bytesperline );
-//  printf("	vid_format->fmt.pix.colorspace  =%d\n",	vid_format->fmt.pix.colorspace );
 }
 
-
-void signal_handler(int signal){
-	printf( "signal catched: %d\n", signal);
-	if( remove(PID_SAVE_FILE) != 0 )
-	    perror( "Error deleting file" );
-	exit(-1);
-}
-
-int main(int argc, char**argv)
-{
-	// signal handler
-	signal(SIGINT, signal_handler);
-	signal(SIGQUIT, signal_handler);
-	signal(SIGKILL, signal_handler);
-	signal(SIGCONT, signal_handler);
-	signal(SIGHUP, signal_handler);
-	signal(SIGABRT, signal_handler);
-	signal(SIGSEGV, signal_handler);
-	//
+void *security_thread_execution(void *){
+	//printf("\nI am in security thread");
 	struct v4l2_capability vid_caps;
 	struct v4l2_format vid_format;
 	size_t framesize;
@@ -183,9 +167,9 @@ int main(int argc, char**argv)
 	const char*video_device = VIDEO_DEVICE;
 	int fdwr = 0;
 	int ret_code = 0;
-	if (argc > 1) {
-		video_device = argv[1];
-	}
+//		if (argc > 1) {
+//			video_device = argv[1];
+//		}
 	fdwr = open(video_device, O_RDWR);
 	assert(fdwr >= 0);
 	ret_code = ioctl(fdwr, VIDIOC_QUERYCAP, &vid_caps);
@@ -201,8 +185,8 @@ int main(int argc, char**argv)
 	vid_format.fmt.pix.height = FRAME_HEIGHT;
 	vid_format.fmt.pix.pixelformat = FRAME_FORMAT;
 	vid_format.fmt.pix.sizeimage = framesize;
-//	vid_format.fmt.pix.field = V4L2_FIELD_NONE;
-//	vid_format.fmt.pix.bytesperline = linewidth;
+	//	vid_format.fmt.pix.field = V4L2_FIELD_NONE;
+	//	vid_format.fmt.pix.bytesperline = linewidth;
 	vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
 	if (debug)
@@ -216,16 +200,14 @@ int main(int argc, char**argv)
 	if (!format_properties(vid_format.fmt.pix.pixelformat,
 			vid_format.fmt.pix.width, vid_format.fmt.pix.height, &linewidth,
 			&framesize)) {
-//		printf("unable to guess correct settings for format '%d'\n",
-//				FRAME_FORMAT);
 	}
 
 	info_writing();
 	/*---------------------- opencv part --------------------------*/
 	VideoCapture cap(0); //capture the video from web cam
 	if (!cap.isOpened()) {
-//		printf("Cannot open the web cam.\n");
-		return -1;
+		//		printf("Cannot open the web cam.\n");
+		return NULL;
 	}
 
 	Mat original, gray, text_secure_screen, face_secure_screen;
@@ -239,12 +221,13 @@ int main(int argc, char**argv)
 	while (true) {
 		bool bSuccess = cap.read(original); // read a new frame from video
 		if (!bSuccess) { //if not success, break loop
-//			printf("Cannot read a frame from video stream");
+			//			printf("Cannot read a frame from video stream");
 			break;
 		}
 		//imshow("Original", original); //show the original image
 		cvtColor(original, gray, CV_BGR2GRAY);
-		IplImage* frame = cvCreateImage(cvSize(gray.cols, gray.rows), 8, gray.channels());
+		IplImage* frame = cvCreateImage(cvSize(gray.cols, gray.rows), 8,
+				gray.channels());
 		IplImage tmp = gray;
 		cvCopy(&tmp, frame);
 		vector<Rect> faces = face_detect(frame);
@@ -252,7 +235,8 @@ int main(int argc, char**argv)
 		cvReleaseImage(&frame);
 		//
 		vector<Rect> texts = detectLetters2(original);
-		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1, NULL);
+		Size s = getTextSize(options[LOGO_KEY], CV_FONT_HERSHEY_SIMPLEX, 1.0, 1,
+				NULL);
 
 		int area = 0;
 		for (i = 0; i < texts.size(); i++) {
@@ -273,45 +257,173 @@ int main(int argc, char**argv)
 			}
 		}
 
-
-		if(t_status == FACE_SECURE){
-			if(mCount>MAX_STATUS_LASTING_COUNT_FACE)
+		if (t_status == FACE_SECURE) {
+			if (mCount > MAX_STATUS_LASTING_COUNT_FACE)
 				status = t_status;
 		} else {
-			if(mCount>MAX_STATUS_LASTING_COUNT)
+			if (mCount > MAX_STATUS_LASTING_COUNT)
 				status = t_status;
 		}
 
-		if(status == NO_SECURE){
-			rectangle(original, cvPoint(0,0), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT/8), CV_RGB(0,0,0), CV_FILLED);
-			rectangle(original, cvPoint(0,FRAME_HEIGHT*7/8), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);
-			rectangle(original, cvPoint(0,0), cvPoint(FRAME_WIDTH/4, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);
-			rectangle(original, cvPoint(FRAME_WIDTH*3/4,0), cvPoint(FRAME_WIDTH-1, FRAME_HEIGHT-1), CV_RGB(0,0,0), CV_FILLED);
-			putText(original, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT-10),
-					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255,255,255), 1);
-			yuyv = BGR2YUYV(original.data, FRAME_WIDTH, FRAME_HEIGHT);
-		} else if(status == FACE_SECURE){
-			putText(face_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT-10),
-					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255,255,255), 1);
-			yuyv = BGR2YUYV(face_secure_screen.data, face_secure_screen.cols, face_secure_screen.rows);
-		} else if(status == TEXT_SECURE){
-			putText(text_secure_screen, options[LOGO_KEY], cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
+		if (status == NO_SECURE) {
+			rectangle(original, cvPoint(0, 0),
+					cvPoint(FRAME_WIDTH - 1, FRAME_HEIGHT / 8), CV_RGB(0, 0, 0),
+					CV_FILLED);
+			rectangle(original, cvPoint(0, FRAME_HEIGHT * 7 / 8),
+					cvPoint(FRAME_WIDTH - 1, FRAME_HEIGHT - 1), CV_RGB(0, 0, 0),
+					CV_FILLED);
+			rectangle(original, cvPoint(0, 0),
+					cvPoint(FRAME_WIDTH / 4, FRAME_HEIGHT - 1), CV_RGB(0, 0, 0),
+					CV_FILLED);
+			rectangle(original, cvPoint(FRAME_WIDTH * 3 / 4, 0),
+					cvPoint(FRAME_WIDTH - 1, FRAME_HEIGHT - 1), CV_RGB(0, 0, 0),
+					CV_FILLED);
+			putText(original, options[LOGO_KEY],
+					cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
 					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255, 255, 255), 1);
-			yuyv = BGR2YUYV(text_secure_screen.data, text_secure_screen.cols, text_secure_screen.rows);
-			//
-//			for (i = 0; i < texts.size(); i++) {
-//				rectangle(original, texts[i], CV_RGB(255,0,0), 2);
-//			}
-//			yuyv = BGR2YUYV(original.data, FRAME_WIDTH, FRAME_HEIGHT);
+			yuyv = BGR2YUYV(original.data, FRAME_WIDTH, FRAME_HEIGHT);
+		} else if (status == FACE_SECURE) {
+			putText(face_secure_screen, options[LOGO_KEY],
+					cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
+					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255, 255, 255), 1);
+			yuyv = BGR2YUYV(face_secure_screen.data, face_secure_screen.cols,
+					face_secure_screen.rows);
+		} else if (status == TEXT_SECURE) {
+			putText(text_secure_screen, options[LOGO_KEY],
+					cvPoint(FRAME_WIDTH - 10 - s.width, FRAME_HEIGHT - 10),
+					CV_FONT_HERSHEY_SIMPLEX, 1.0, cvScalar(255, 255, 255), 1);
+			yuyv = BGR2YUYV(text_secure_screen.data, text_secure_screen.cols,
+					text_secure_screen.rows);
 		}
 		if (framesize != write(fdwr, yuyv, framesize)) {
 		}
 		if (waitKey(30) == 27) {
 			break;
 		}
+
 		free(yuyv);
 	}
 	close(fdwr);
+}
+
+void *compose_msg(int &len){
+	const char* HEAD = "CS";
+	const char* TAIL = "TX";
+	//const char* msg = "보안 스레드 상태";
+	char* msg = "Receiving message confirmed!";
+	int head_len = 10;
+	int body_len = strlen(msg) + 2 + 2;
+	len = head_len + body_len;
+	void *out = malloc(len);
+	memcpy(out, HEAD, 2);
+	memcpy(out+2, &head_len, 4);
+	memcpy(out+6, &body_len, 4);
+	memcpy(out+head_len, &msg, strlen(msg));
+	short stt = SECURE_RUNNING;
+	memcpy(out+head_len+strlen(msg), &stt, 2);
+	memcpy(out+head_len+strlen(msg) + 2, TAIL, 2);
+	//return out;
+
+	//
+	len = strlen(msg);
+	return msg;
+}
+
+void *thread_handle_client(void *sock_client){
+	int write_len, read_len;
+	void *write_msg, *read_msg;
+	read_msg = malloc(MAX_SOCKET_MSG_LEN);
+	write_msg = compose_msg(write_len);
+	// read message from client
+	while(1) {
+		read_len = read(*(int *)sock_client, read_msg, MAX_SOCKET_MSG_LEN);
+		//Send the message back to client
+		if (read_len > 0) {
+			printf("\nReceived message (%d): %s", *(int *)sock_client, read_msg);
+			write(*(int *)sock_client, write_msg, write_len);
+		} else if(read_len ==0 ){
+			printf("\nDisconnected!");
+			close(*(int *)sock_client);
+			break;
+		} else {
+			printf("\nRead Failed!");
+		}
+		memset(read_msg, 0, MAX_SOCKET_MSG_LEN);
+	}
+}
+
+void *socket_thread_execution(void *){
+	int server_sock, client_sock;
+	struct sockaddr_in server, client;
+	if((server_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+		perror("\nFailed to open server socket!");
+	}
+	memset(&server, 0, sizeof(server));
+	server.sin_family = AF_INET;
+	server.sin_addr.s_addr = htonl(INADDR_ANY);
+	server.sin_port = htons(SERVER_PORT);
+	if(bind(server_sock, (struct sockaddr *) &server, sizeof(server))){
+		perror("\nFailed to bind server socket.");
+	}
+	if(listen(server_sock, MAXPENDING) < 0){
+		perror("\nFailed in listening client");
+	}
+
+	printf("\nOpen socker server %s in Port %d", SERVER_IP, SERVER_PORT);
+	while(1){ /* Looping for listening client connections*/
+		pthread_t th_client;
+		int thread_num;
+		unsigned int clientlen = sizeof(struct sockaddr_in);
+		if((client_sock = accept(server_sock, (struct sockaddr *) &client, (socklen_t *)&clientlen)) < 0){
+			perror("\nFailed to accept client socket.");
+		}
+		printf("\nConnected to client : %s Port %d", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+		thread_num = pthread_create(&th_client, NULL, thread_handle_client, (void *) &client_sock);
+	}
+}
+
+
+void signal_handler(int signal){
+	printf( "\nsignal catched: %d\n", signal);
+	if( remove(PID_SAVE_FILE) != 0 )
+	    perror( "Error deleting file" );
+	if(sh != NULL){
+		sh->stop();
+		delete sh;
+	}
+	exit(-1);
+}
+
+int main(int argc, char**argv)
+{
+	// signal handler
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+	signal(SIGPIPE, signal_handler);
+	signal(SIGQUIT, signal_handler);
+	signal(SIGKILL, signal_handler);
+	signal(SIGCONT, signal_handler);
+	signal(SIGHUP, signal_handler);
+	signal(SIGABRT, signal_handler);
+	signal(SIGSEGV, signal_handler);
+	//
+
+	int th_security_stt, th_socket_stt;
+	pthread_t th_security, th_socket;
+	if((th_security_stt = pthread_create(&th_security, NULL, security_thread_execution, NULL))){
+		printf("\nError in create thread %d", th_security_stt);
+	}
+
+//	if((th_socket_stt = pthread_create(&th_socket, NULL, socket_thread_execution, NULL))){
+//		printf("\nError in create thread %d", th_socket_stt);
+//	}
+
+	SocketHandler *sh = new SecureCameraSH();
+	sh->start("", SERVER_PORT);
+
+	pthread_join(th_security, NULL);
+	//pthread_join(th_socket, NULL);
+
 	return 0;
 }
 

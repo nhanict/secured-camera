@@ -1,0 +1,2 @@
+// adding text to test git rm
+// hehe
